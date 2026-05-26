@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Find Reservation</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+  <main class="app-shell">
+    <section class="kiosk-card reservation-card">
+
+      <div class="top-bar">
+        <a href="index.html" class="back-btn">← Back</a>
+      </div>
+
+      <div class="reservation-header">
+        <p class="eyebrow">Smart Check-In</p>
+        <h1>Find Your Reservation</h1>
+        <p class="subtitle">
+          Enter your reservation code to continue the digital check-in process.
+        </p>
+      </div>
+
+    <form id="reservationForm" class="reservation-form">
+
+      <div class="input-group">
+      <label for="reservationCode">Reservation Code</label>
+      <input type="text" id="reservationCode" placeholder="Example: HT123" />
+      <small class="input-hint">Use the code from your booking confirmation</small>
+     </div>
+
+      <div class="input-group">
+      <label for="lastName">Last Name</label>
+     <input type="text" id="lastName" placeholder="Example: Ghara" />
+     </div>
+
+     <div class="input-group">
+     <label for="email">Email Address</label>
+      <input type="email" id="email" placeholder="Example: sara@email.com" />
+      </div>
+
+      <button type="submit" class="primary-btn">
+      Continue
+      </button>
+
+      <div id="message"></div>
+
+      </form>
+
+      <div class="security-note">
+        Secure encrypted reservation lookup
+      </div>
+
+    </section>
+  </main>
+
+  <script src="reservation.js"></script>
+</body>
+</html>

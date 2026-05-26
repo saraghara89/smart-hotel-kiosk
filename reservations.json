@@ -1,0 +1,15 @@
+[
+  {
+    "code": "HT123",
+    "guestName": "Sara Ghara",
+    "lastName": "GHARA",
+    "email": "sara@email.com",
+    "dates": "June 10 - June 12",
+    "room": "Deluxe Suite",
+    "guests": "2 Adults",
+    "payment": "Paid",
+    "balance": "$0",
+    "floor": "7th Floor",
+    "view": "Sea View"
+  }
+]
