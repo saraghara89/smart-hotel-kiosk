@@ -595,7 +595,7 @@ body {
 
 .thankyou-card {
   text-align: center;
-  width: min(100%, 700px);
+  width: min(100%, 750px);
   display: flex;
   flex-direction: column;
   align-items: center;
