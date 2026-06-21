@@ -1,0 +1,247 @@
+{
+  "info": {
+    "name": "Smart Stay Kiosk API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/health",
+        "description": "Checks that the API server is running."
+      }
+    },
+    {
+      "name": "Login - Success",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@smarthotel.com\",\n  \"password\": \"Admin123\"\n}"
+        },
+        "url": "{{baseUrl}}/api/auth/login",
+        "description": "Logs an admin/staff user into the system."
+      }
+    },
+    {
+      "name": "Login - Error",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"wrong@email.com\",\n  \"password\": \"bad\"\n}"
+        },
+        "url": "{{baseUrl}}/api/auth/login",
+        "description": "Shows an invalid login error response."
+      }
+    },
+    {
+      "name": "Verify Reservation - Success",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"code\": \"HT123\",\n  \"lastName\": \"Ghara\",\n  \"email\": \"sara@email.com\"\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations/verify",
+        "description": "Verifies guest reservation details before smart check-in."
+      }
+    },
+    {
+      "name": "Verify Reservation - Error",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"code\": \"BAD\",\n  \"lastName\": \"Test\",\n  \"email\": \"test@email.com\"\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations/verify",
+        "description": "Returns an error when no reservation matches the input."
+      }
+    },
+    {
+      "name": "Get All Reservations",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations",
+        "description": "Retrieves all reservations with related room data."
+      }
+    },
+    {
+      "name": "Search Reservations",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations?q=sara",
+        "description": "Complex query: searches reservations by code, guest name or email."
+      }
+    },
+    {
+      "name": "Filter Reservations by Status",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations?status=checked-in",
+        "description": "Complex query: filters reservations by status."
+      }
+    },
+    {
+      "name": "Create Reservation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"code\": \"HT999\",\n  \"guestName\": \"New Guest\",\n  \"lastName\": \"Guest\",\n  \"email\": \"newguest@email.com\",\n  \"phone\": \"+972500000000\",\n  \"idNumber\": \"555444333\",\n  \"checkIn\": \"2026-08-01\",\n  \"checkOut\": \"2026-08-03\",\n  \"roomId\": 304,\n  \"guests\": 2,\n  \"paymentStatus\": \"pending\",\n  \"balance\": 150\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations",
+        "description": "Creates a new reservation."
+      }
+    },
+    {
+      "name": "Update Reservation",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"paymentStatus\": \"paid\",\n  \"balance\": 0\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations/2",
+        "description": "Updates reservation details."
+      }
+    },
+    {
+      "name": "Delete Reservation",
+      "request": {
+        "method": "DELETE",
+        "url": "{{baseUrl}}/api/reservations/3",
+        "description": "Deletes a reservation by ID."
+      }
+    },
+    {
+      "name": "Complete Check-In",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/api/reservations/2/check-in",
+        "description": "Completes smart check-in and issues a room card."
+      }
+    },
+    {
+      "name": "Complete Check-Out",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/api/reservations/1/check-out",
+        "description": "Completes self-service checkout and returns room card."
+      }
+    },
+    {
+      "name": "Get Rooms",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/rooms",
+        "description": "Retrieves rooms."
+      }
+    },
+    {
+      "name": "Filter Available Rooms",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/rooms?status=available&minCapacity=2",
+        "description": "Complex query: filters rooms by availability and capacity."
+      }
+    },
+    {
+      "name": "Update Room",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"available\"\n}"
+        },
+        "url": "{{baseUrl}}/api/rooms/902",
+        "description": "Updates room availability or details."
+      }
+    },
+    {
+      "name": "Get System Statistics",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/stats",
+        "description": "Calculates statistics from reservations and rooms."
+      }
+    },
+    {
+      "name": "Get External Weather",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/weather",
+        "description": "Calls Open-Meteo external API and returns hotel weather."
+      }
+    },
+    {
+      "name": "Process Payment",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 220,\n  \"method\": \"Credit Card\"\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations/2/pay",
+        "description": "Simulates payment processing for a reservation and updates payment status to paid."
+      },
+      "response": []
+    }
+  ]
+}

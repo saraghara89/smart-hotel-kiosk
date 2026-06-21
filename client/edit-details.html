@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Edit Guest Details</title>
+  <link rel="stylesheet" href="style/style.css"/>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="kiosk-card reservation-card">
+      <div class="top-bar"><a href="summary.html" class="back-btn">← Back</a></div>
+      <div class="reservation-header">
+        <p class="eyebrow">Smart Check-In</p>
+        <h1>Edit Guest Details</h1>
+        <p class="subtitle">Update the guest information before completing the kiosk check-in.</p>
+      </div>
+      <form id="editDetailsForm" class="reservation-form">
+        <div class="input-group"><label for="guestName">Full Name</label><input type="text" id="guestName" /></div>
+        <div class="input-group"><label for="lastName">Last Name</label><input type="text" id="lastName" /></div>
+        <div class="input-group"><label for="email">Email Address</label><input type="email" id="email" /></div>
+        <div class="input-group"><label for="phone">Phone Number</label><input type="text" id="phone" /></div>
+        <div class="input-group"><label for="idNumber">ID Number</label><input type="text" id="idNumber" /></div>
+        <button type="submit" class="primary-btn">Save Details</button>
+        <div id="message" class="site-message" aria-live="polite"></div>
+      </form>
+    </section>
+  </main>
+  <script src="js/api.js"></script>
+  <script src="js/edit-details.js"></script>
+</body>
+</html>

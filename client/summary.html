@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Reservation Summary</title>
+  <link rel="stylesheet" href="style/style.css"/>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="kiosk-card summary-premium">
+      <div class="summary-top"><div><p class="eyebrow">Verified Reservation</p><h1>Your Stay</h1></div><div class="status-badge" id="reservationStatus">Confirmed</div></div>
+      <div id="message" class="site-message" aria-live="polite"></div>
+      <div class="guest-card"><div class="guest-avatar">SS</div><div><p class="guest-label">Guest</p><h2 id="guestName">-</h2></div></div>
+      <div class="reservation-grid">
+        <div class="info-card"><span>Stay Dates</span><strong id="dates">-</strong></div>
+        <div class="info-card"><span>Room Type</span><strong id="room">-</strong></div>
+        <div class="info-card"><span>Guests</span><strong id="guests">-</strong></div>
+        <div class="info-card"><span>View</span><strong id="view">-</strong></div>
+        <div class="info-card"><span>Floor</span><strong id="floor">-</strong></div>
+        <div class="info-card"><span>Room Number</span><strong id="roomNumber">-</strong></div>
+      </div>
+      <div class="payment-section"><div><p class="payment-title">Payment Status</p><h3 id="payment">-</h3></div><div class="paid-indicator" id="balance">Balance: -</div></div>
+      <div class="services-box"><p class="services-title">Hotel Information</p><div class="services-list"><span>Breakfast 07:00-10:30</span><span>Pool 08:00-19:00</span><span>Wi-Fi Included</span><span>Parking Available</span></div></div>
+      <div class="weather-card"><p class="services-title">Hotel Weather</p><div id="weatherBox">Loading weather...</div></div>
+      <div class="action-panel summary-buttons"><a href="hotel-info.html" class="secondary-btn">Hotel Guide</a><a href="edit-details.html" class="secondary-btn">Edit Details</a><button id="payBtn" class="secondary-btn">Pay Balance</button><button id="completeBtn" class="primary-btn">Complete Check-In</button></div>
+    </section>
+  </main>
+  <script src="js/api.js"></script>
+  <script src="js/summary.js"></script>
+</body>
+</html>

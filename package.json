@@ -1,0 +1,18 @@
+{
+  "name": "smart-stay-kiosk",
+  "version": "1.0.0",
+  "description": "Smart Hotel Online Check-In and Self-Service Kiosk System",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js"
+  },
+  "keywords": ["hotel", "kiosk", "check-in", "express", "rest-api"],
+  "author": "Sara Ghara & Monaya Zabarqa",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.19.2"
+  }
+}

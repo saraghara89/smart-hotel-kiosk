@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="style/style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <main class="dashboard-shell">
+    <header class="dashboard-header">
+      <div><p class="eyebrow">Back Office</p><h1>Hotel Management Dashboard</h1></div>
+      <div class="header-actions"><button id="logoutBtn" class="secondary-btn">Logout</button><a href="index.html" class="secondary-btn">Home</a></div>
+    </header>
+
+    <section class="dashboard-grid" id="statsCards"></section>
+
+    <section class="dashboard-content">
+      <div class="chart-panel">
+        <h2>Reservations by Status</h2>
+        <canvas id="statusChart"></canvas>
+      </div>
+
+      <div class="table-panel">
+        <div class="table-head">
+          <h2>Reservations</h2>
+          <div class="table-actions">
+            <input id="searchInput" type="text" placeholder="Search guest, code or email" />
+            <select id="statusFilter"><option value="">All Statuses</option><option value="reserved">Reserved</option><option value="checked-in">Checked In</option><option value="checked-out">Checked Out</option></select>
+          </div>
+        </div>
+        <div id="message" class="site-message" aria-live="polite"></div>
+        <form id="reservationAdminForm" class="admin-form">
+          <input type="hidden" id="reservationId" />
+          <div class="input-group"><label for="code">Code</label><input id="code" type="text" placeholder="HT999" /></div>
+          <div class="input-group"><label for="guestName">Guest Name</label><input id="guestName" type="text" placeholder="Full name" /></div>
+          <div class="input-group"><label for="lastName">Last Name</label><input id="lastName" type="text" placeholder="Last name" /></div>
+          <div class="input-group"><label for="email">Email</label><input id="email" type="email" placeholder="guest@email.com" /></div>
+          <div class="input-group"><label for="checkIn">Check-In</label><input id="checkIn" type="date" /></div>
+          <div class="input-group"><label for="checkOut">Check-Out</label><input id="checkOut" type="date" /></div>
+          <div class="input-group"><label for="roomId">Room</label><select id="roomId"></select></div>
+          <div class="input-group"><label for="guests">Guests</label><input id="guests" type="number" min="1" value="1" /></div>
+          <div class="input-group"><label for="paymentStatus">Payment</label><select id="paymentStatus"><option value="paid">Paid</option><option value="pending">Pending</option></select></div>
+          <div class="input-group"><label for="status">Status</label><select id="status"><option value="reserved">Reserved</option><option value="checked-in">Checked In</option><option value="checked-out">Checked Out</option></select></div>
+          <div class="admin-form-actions"><button type="submit" class="primary-btn" id="saveReservationBtn">Create Reservation</button><button type="button" class="secondary-btn" id="resetFormBtn">Clear</button></div>
+        </form>
+        <table><thead><tr><th>Code</th><th>Guest</th><th>Room</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead><tbody id="reservationRows"></tbody></table>
+      </div>
+    </section>
+  </main>
+  <script src="js/api.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>
