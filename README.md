@@ -42,7 +42,8 @@ smart-hotel-kiosk-final/
 ├── postman/
 ├── docs/
 ├── package.json
-└── .env
+├── .env.example
+└── README.md
 ```
 
 ## Installation
@@ -124,3 +125,53 @@ The system uses **Chart.js** in the admin dashboard to display reservation stati
 - No `alert`, `confirm`, or `prompt` are used. All messages appear inside the website UI.
 - The server serves both the client and API from the same Express app.
 - The `.env` file contains only non-secret demo configuration.
+
+## Submission Links
+
+* Live Project URL: https://smart-hotel-kiosk.onrender.com
+* Figma Prototype: https://www.figma.com/proto/uvs77RjFyUSzditBffgoO0/Untitled?node-id=1-2&p=f&t=ln26a7VkJIDdUulj-1&scaling=scale-down-width&content-scaling=fixed&page-id=0%3A1
+* GitHub Repository: https://github.com/saraghara89/smart-hotel-kiosk
+* Postman Collection: Included in `/postman/Smart-Stay-Kiosk.postman_collection.json`
+
+## Environment Variables
+
+The real `.env` file is not uploaded to GitHub.
+
+To run the project locally, create a `.env` file based on `.env.example`:
+
+```env
+PORT=3000
+HOTEL_NAME=Smart Stay Hotel
+HOTEL_CITY=Tel Aviv
+HOTEL_LAT=32.0853
+HOTEL_LON=34.7818
+```
+
+## Final Submission Notes
+
+This project is a full-stack Node.js and Express application.
+The server serves both the frontend pages and the backend API routes.
+
+To run the project:
+
+```bash
+npm install
+npm start
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+The project includes:
+
+* RESTful API routes
+* Full CRUD for reservations
+* Admin login and dashboard
+* Search, filtering, and statistics
+* External weather API integration
+* Chart.js dashboard chart
+* Postman API collection
+* Error handling and UI messages without `alert`, `confirm`, or `prompt`
