@@ -7,6 +7,9 @@ https://www.figma.com/proto/uvs77RjFyUSzditBffgoO0/Untitled?node-id=1-2&p=f&t=ln
 GitHub:
 https://github.com/saraghara89/smart-hotel-kiosk
 
+Live Project:
+https://smart-hotel-kiosk.onrender.com
+
 ## External API
 The project uses Open-Meteo API for weather information:
 `GET /api/weather`
