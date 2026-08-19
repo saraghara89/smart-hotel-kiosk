@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
+    "bootstrap:owner": "node scripts/bootstrap-owner.js",
     "security:audit": "npm audit --omit=dev"
   },
   "keywords": ["hotel", "kiosk", "check-in", "express", "rest-api", "postgresql"],
