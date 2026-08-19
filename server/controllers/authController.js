@@ -25,19 +25,23 @@ function cookieOptions() {
 async function login(req, res, next) {
   try {
     const parsed = loginSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ success: false, message: 'Invalid login request.' });
-    }
+    if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid login request.' });
+
+    const hotelSlug = process.env.HOTEL_SLUG;
+    if (!hotelSlug) throw new Error('HOTEL_SLUG is not configured.');
 
     const { email, password } = parsed.data;
     const rows = await sql`
-      SELECT id, hotel_id, name, email, password_hash, role, is_active
-      FROM users
-      WHERE lower(email) = ${email} AND is_active = TRUE
-      LIMIT 2
+      SELECT u.id, u.hotel_id, u.name, u.email, u.password_hash, u.role, u.is_active
+      FROM users u
+      JOIN hotels h ON h.id = u.hotel_id
+      WHERE h.slug = ${hotelSlug}
+        AND h.is_active = TRUE
+        AND lower(u.email) = ${email}
+        AND u.is_active = TRUE
+      LIMIT 1
     `;
 
-    // Same generic response for unknown email and wrong password.
     if (rows.length !== 1 || !(await argon2.verify(rows[0].password_hash, password))) {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
@@ -63,7 +67,7 @@ async function login(req, res, next) {
 
     res.cookie(SESSION_COOKIE, sessionToken, cookieOptions());
     res.set('Cache-Control', 'no-store');
-    return res.json({
+    res.json({
       success: true,
       data: { id: user.id, hotelId: user.hotel_id, name: user.name, email: user.email, role: user.role },
       csrfToken
@@ -85,7 +89,7 @@ async function logout(req, res, next) {
       INSERT INTO audit_logs (hotel_id, user_id, action, entity_type, entity_id, ip_address)
       VALUES (${req.auth.user.hotelId}, ${req.auth.user.id}, 'auth.logout', 'user', ${req.auth.user.id}, ${req.ip || null})
     `;
-    res.clearCookie(SESSION_COOKIE, { ...cookieOptions(), maxAge: undefined });
+    res.clearCookie(SESSION_COOKIE, { path: '/', secure: isProduction, sameSite: 'strict', httpOnly: true });
     res.set('Cache-Control', 'no-store');
     res.json({ success: true });
   } catch (error) {
