@@ -1,232 +1,297 @@
-const { readDatabase, writeDatabase, getNextId } = require('../db/fileDatabase');
+const { z } = require('zod');
+const { sql } = require('../db/postgres');
 
-function enrichReservation(reservation, rooms) {
-  const room = rooms.find((item) => Number(item.id) === Number(reservation.roomId));
-  return { ...reservation, room: room || null };
+const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+const reservationInput = z.object({
+  code: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/).transform((v) => v.toUpperCase()),
+  guestName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().min(1).max(80),
+  email: z.string().trim().email().max(254).transform((v) => v.toLowerCase()),
+  phone: z.string().trim().max(32).optional().default(''),
+  roomId: uuid,
+  checkIn: z.iso.date(),
+  checkOut: z.iso.date(),
+  guests: z.coerce.number().int().min(1).max(20),
+  paymentStatus: z.enum(['pending', 'partial', 'paid', 'refunded']).default('pending'),
+  balance: z.coerce.number().min(0).max(10000000).optional(),
+  status: z.enum(['reserved', 'checked-in', 'checked-out', 'cancelled', 'no-show']).default('reserved'),
+  smartCheckIn: z.boolean().optional().default(false)
+}).refine((v) => v.checkOut > v.checkIn, { message: 'Check-out date must be after check-in date.' });
+
+const updateInput = reservationInput.partial().refine((v) => !v.checkIn || !v.checkOut || v.checkOut > v.checkIn, {
+  message: 'Check-out date must be after check-in date.'
+});
+
+const verifyInput = z.object({
+  code: z.string().trim().min(3).max(40).transform((v) => v.toUpperCase()),
+  lastName: z.string().trim().min(1).max(80),
+  email: z.string().trim().email().max(254).transform((v) => v.toLowerCase())
+});
+
+const toDbStatus = (value) => String(value || '').replaceAll('-', '_');
+const toApiStatus = (value) => String(value || '').replaceAll('_', '-');
+
+function mapReservation(row) {
+  return {
+    id: row.id,
+    code: row.code,
+    guestName: row.first_name,
+    lastName: row.last_name,
+    email: row.email,
+    phone: row.phone || '',
+    checkIn: row.check_in_date,
+    checkOut: row.check_out_date,
+    roomId: row.room_id,
+    roomType: row.room_type,
+    guests: row.guest_count,
+    paymentStatus: row.payment_status,
+    balance: Number(row.balance),
+    status: toApiStatus(row.status),
+    smartCheckIn: row.smart_check_in,
+    cardIssued: row.card_issued,
+    createdAt: row.created_at,
+    room: row.room_id ? {
+      id: row.room_id,
+      number: row.room_number,
+      type: row.room_type,
+      view: row.view_name,
+      floor: row.floor,
+      capacity: row.capacity,
+      pricePerNight: Number(row.price_per_night),
+      status: row.room_status
+    } : null
+  };
 }
 
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function validateDateRange(checkIn, checkOut) {
-  return Boolean(checkIn && checkOut && new Date(checkOut) > new Date(checkIn));
+async function selectReservation(id, hotelId, executor = sql) {
+  const rows = await executor`
+    SELECT r.*, g.first_name, g.last_name, g.email, g.phone,
+           rm.room_number, rm.room_type, rm.view_name, rm.floor, rm.capacity, rm.price_per_night, rm.status AS room_status
+    FROM reservations r
+    JOIN guests g ON g.id = r.guest_id AND g.hotel_id = r.hotel_id
+    LEFT JOIN rooms rm ON rm.id = r.room_id AND rm.hotel_id = r.hotel_id
+    WHERE r.id = ${id} AND r.hotel_id = ${hotelId}
+    LIMIT 1
+  `;
+  return rows[0] || null;
 }
 
 async function getReservations(req, res, next) {
   try {
-    const db = await readDatabase();
-    const { q, status, roomType, paymentStatus, sortBy = 'createdAt', order = 'desc' } = req.query;
-    let reservations = db.reservations.map((item) => enrichReservation(item, db.rooms));
+    const hotelId = req.auth.user.hotelId;
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    const status = req.query.status ? toDbStatus(req.query.status) : null;
+    const paymentStatus = req.query.paymentStatus ? String(req.query.paymentStatus) : null;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
 
-    if (q) {
-      const search = q.toLowerCase();
-      reservations = reservations.filter((item) =>
-        item.code.toLowerCase().includes(search) ||
-        item.guestName.toLowerCase().includes(search) ||
-        item.email.toLowerCase().includes(search)
-      );
-    }
-    if (status) reservations = reservations.filter((item) => item.status === status);
-    if (roomType) reservations = reservations.filter((item) => item.roomType === roomType);
-    if (paymentStatus) reservations = reservations.filter((item) => item.paymentStatus === paymentStatus);
+    const rows = await sql`
+      SELECT r.*, g.first_name, g.last_name, g.email, g.phone,
+             rm.room_number, rm.room_type, rm.view_name, rm.floor, rm.capacity, rm.price_per_night, rm.status AS room_status
+      FROM reservations r
+      JOIN guests g ON g.id = r.guest_id AND g.hotel_id = r.hotel_id
+      LEFT JOIN rooms rm ON rm.id = r.room_id AND rm.hotel_id = r.hotel_id
+      WHERE r.hotel_id = ${hotelId}
+        AND (${q} = '' OR r.code ILIKE ${'%' + q + '%'} OR g.first_name ILIKE ${'%' + q + '%'} OR g.last_name ILIKE ${'%' + q + '%'} OR g.email ILIKE ${'%' + q + '%'})
+        AND (${status}::text IS NULL OR r.status = ${status})
+        AND (${paymentStatus}::text IS NULL OR r.payment_status = ${paymentStatus})
+      ORDER BY r.created_at DESC
+      LIMIT ${limit}
+    `;
 
-    reservations.sort((a, b) => {
-      const first = a[sortBy] || '';
-      const second = b[sortBy] || '';
-      if (first < second) return order === 'asc' ? -1 : 1;
-      if (first > second) return order === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    res.json({ success: true, count: reservations.length, data: reservations });
-  } catch (error) {
-    next(error);
-  }
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, count: rows.length, data: rows.map(mapReservation) });
+  } catch (error) { next(error); }
 }
 
 async function getReservationById(req, res, next) {
   try {
-    const db = await readDatabase();
-    const reservation = db.reservations.find((item) => Number(item.id) === Number(req.params.id));
-    if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found.' });
-    res.json({ success: true, data: enrichReservation(reservation, db.rooms) });
-  } catch (error) {
-    next(error);
-  }
+    const parsedId = uuid.safeParse(req.params.id);
+    if (!parsedId.success) return res.status(400).json({ success: false, message: 'Invalid reservation id.' });
+    const row = await selectReservation(parsedId.data, req.auth.user.hotelId);
+    if (!row) return res.status(404).json({ success: false, message: 'Reservation not found.' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, data: mapReservation(row) });
+  } catch (error) { next(error); }
 }
 
 async function verifyReservation(req, res, next) {
   try {
-    const { code, lastName, email } = req.body;
-    if (!code || !lastName || !email) return res.status(400).json({ success: false, message: 'Reservation code, last name and email are required.' });
-    const db = await readDatabase();
-    const reservation = db.reservations.find((item) =>
-      item.code.toUpperCase() === code.toUpperCase() &&
-      item.lastName.toUpperCase() === lastName.toUpperCase() &&
-      item.email.toLowerCase() === email.toLowerCase()
-    );
-    if (!reservation) return res.status(404).json({ success: false, message: 'No reservation found. Please check your details.' });
-    res.json({ success: true, message: 'Reservation verified successfully.', data: enrichReservation(reservation, db.rooms) });
-  } catch (error) {
-    next(error);
-  }
+    const parsed = verifyInput.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ success: false, message: 'Invalid reservation details.' });
+    const hotelSlug = process.env.HOTEL_SLUG;
+    const { code, lastName, email } = parsed.data;
+    const rows = await sql`
+      SELECT r.*, g.first_name, g.last_name, g.email, g.phone,
+             rm.room_number, rm.room_type, rm.view_name, rm.floor, rm.capacity, rm.price_per_night, rm.status AS room_status
+      FROM reservations r
+      JOIN hotels h ON h.id = r.hotel_id AND h.slug = ${hotelSlug} AND h.is_active = TRUE
+      JOIN guests g ON g.id = r.guest_id AND g.hotel_id = r.hotel_id
+      LEFT JOIN rooms rm ON rm.id = r.room_id AND rm.hotel_id = r.hotel_id
+      WHERE r.code = ${code}
+        AND lower(g.last_name) = ${lastName.toLowerCase()}
+        AND lower(g.email) = ${email}
+        AND r.status IN ('reserved', 'checked_in')
+      LIMIT 1
+    `;
+    if (!rows[0]) return res.status(404).json({ success: false, message: 'No reservation found. Please check your details.' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, message: 'Reservation verified successfully.', data: mapReservation(rows[0]) });
+  } catch (error) { next(error); }
 }
 
 async function createReservation(req, res, next) {
+  const parsed = reservationInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, message: parsed.error.issues[0]?.message || 'Invalid reservation data.' });
+
   try {
-    const required = ['code', 'guestName', 'lastName', 'email', 'checkIn', 'checkOut', 'roomId', 'guests'];
-    const missing = required.filter((key) => !req.body[key]);
-    if (missing.length) return res.status(400).json({ success: false, message: `Missing fields: ${missing.join(', ')}` });
-    if (!isValidEmail(req.body.email)) return res.status(400).json({ success: false, message: 'Invalid email address.' });
-    if (!validateDateRange(req.body.checkIn, req.body.checkOut)) return res.status(400).json({ success: false, message: 'Check-out date must be after check-in date.' });
+    const hotelId = req.auth.user.hotelId;
+    const data = parsed.data;
+    let reservationId;
 
-    const db = await readDatabase();
-    const exists = db.reservations.some((item) => item.code.toUpperCase() === req.body.code.toUpperCase());
-    if (exists) return res.status(409).json({ success: false, message: 'Reservation code already exists.' });
+    await sql.begin(async (tx) => {
+      const rooms = await tx`SELECT * FROM rooms WHERE id = ${data.roomId} AND hotel_id = ${hotelId} FOR UPDATE`;
+      const room = rooms[0];
+      if (!room || ['maintenance', 'out_of_service'].includes(room.status)) {
+        const error = new Error('Room unavailable'); error.statusCode = 400; error.publicMessage = 'Selected room is unavailable.'; throw error;
+      }
+      if (data.guests > room.capacity) {
+        const error = new Error('Capacity exceeded'); error.statusCode = 400; error.publicMessage = 'Room capacity is too small for the number of guests.'; throw error;
+      }
 
-    const room = db.rooms.find((item) => Number(item.id) === Number(req.body.roomId));
-    if (!room) return res.status(404).json({ success: false, message: 'Selected room was not found.' });
-    if (room.status === 'maintenance') return res.status(400).json({ success: false, message: 'Selected room is currently under maintenance.' });
-    if (Number(req.body.guests) > Number(room.capacity)) return res.status(400).json({ success: false, message: 'Room capacity is too small for the number of guests.' });
+      const guests = await tx`
+        INSERT INTO guests (hotel_id, first_name, last_name, email, phone)
+        VALUES (${hotelId}, ${data.guestName}, ${data.lastName}, ${data.email}, ${data.phone || null})
+        RETURNING id
+      `;
+      const balance = data.balance ?? (data.paymentStatus === 'paid' ? 0 : Number(room.price_per_night));
+      const inserted = await tx`
+        INSERT INTO reservations (hotel_id, guest_id, room_id, code, check_in_date, check_out_date, guest_count, status, payment_status, balance, smart_check_in)
+        VALUES (${hotelId}, ${guests[0].id}, ${data.roomId}, ${data.code}, ${data.checkIn}, ${data.checkOut}, ${data.guests}, ${toDbStatus(data.status)}, ${data.paymentStatus}, ${balance}, ${data.smartCheckIn})
+        RETURNING id
+      `;
+      reservationId = inserted[0].id;
+      await tx`
+        INSERT INTO audit_logs (hotel_id, user_id, action, entity_type, entity_id, ip_address)
+        VALUES (${hotelId}, ${req.auth.user.id}, 'reservation.create', 'reservation', ${reservationId}, ${req.ip || null})
+      `;
+    });
 
-    const reservation = {
-      id: getNextId(db.reservations),
-      code: req.body.code.toUpperCase(),
-      guestName: req.body.guestName,
-      lastName: req.body.lastName.toUpperCase(),
-      email: req.body.email.toLowerCase(),
-      phone: req.body.phone || '',
-      idNumber: req.body.idNumber || '',
-      checkIn: req.body.checkIn,
-      checkOut: req.body.checkOut,
-      roomId: Number(req.body.roomId),
-      roomType: room.type,
-      guests: Number(req.body.guests),
-      paymentStatus: req.body.paymentStatus || 'pending',
-      balance: Number(req.body.balance || room.pricePerNight),
-      status: req.body.status || 'reserved',
-      smartCheckIn: Boolean(req.body.smartCheckIn),
-      cardIssued: false,
-      createdAt: new Date().toISOString()
-    };
-
-    db.reservations.push(reservation);
-    await writeDatabase(db);
-    res.status(201).json({ success: true, message: 'Reservation created successfully.', data: enrichReservation(reservation, db.rooms) });
+    const row = await selectReservation(reservationId, hotelId);
+    res.status(201).json({ success: true, message: 'Reservation created successfully.', data: mapReservation(row) });
   } catch (error) {
+    if (error.code === '23505') return res.status(409).json({ success: false, message: 'Reservation code already exists.' });
+    if (error.code === '23P01') return res.status(409).json({ success: false, message: 'The room is already booked for these dates.' });
     next(error);
   }
 }
 
 async function updateReservation(req, res, next) {
+  const id = uuid.safeParse(req.params.id);
+  const parsed = updateInput.safeParse(req.body);
+  if (!id.success || !parsed.success) return res.status(400).json({ success: false, message: 'Invalid reservation update.' });
+
   try {
-    const db = await readDatabase();
-    const index = db.reservations.findIndex((item) => Number(item.id) === Number(req.params.id));
-    if (index === -1) return res.status(404).json({ success: false, message: 'Reservation not found.' });
+    const hotelId = req.auth.user.hotelId;
+    const current = await selectReservation(id.data, hotelId);
+    if (!current) return res.status(404).json({ success: false, message: 'Reservation not found.' });
+    const data = parsed.data;
+    const merged = {
+      code: data.code ?? current.code,
+      guestName: data.guestName ?? current.first_name,
+      lastName: data.lastName ?? current.last_name,
+      email: data.email ?? current.email,
+      phone: data.phone ?? current.phone,
+      roomId: data.roomId ?? current.room_id,
+      checkIn: data.checkIn ?? current.check_in_date,
+      checkOut: data.checkOut ?? current.check_out_date,
+      guests: data.guests ?? current.guest_count,
+      paymentStatus: data.paymentStatus ?? current.payment_status,
+      balance: data.balance ?? Number(current.balance),
+      status: data.status ? toDbStatus(data.status) : current.status,
+      smartCheckIn: data.smartCheckIn ?? current.smart_check_in
+    };
+    if (String(merged.checkOut) <= String(merged.checkIn)) return res.status(400).json({ success: false, message: 'Check-out date must be after check-in date.' });
 
-    const updated = { ...db.reservations[index], ...req.body, id: db.reservations[index].id };
-    if (updated.email && !isValidEmail(updated.email)) return res.status(400).json({ success: false, message: 'Invalid email address.' });
-    if (!validateDateRange(updated.checkIn, updated.checkOut)) return res.status(400).json({ success: false, message: 'Check-out date must be after check-in date.' });
-    if (updated.lastName) updated.lastName = updated.lastName.toUpperCase();
-    if (updated.email) updated.email = updated.email.toLowerCase();
-    if (updated.roomId) {
-      const room = db.rooms.find((item) => Number(item.id) === Number(updated.roomId));
-      if (!room) return res.status(404).json({ success: false, message: 'Selected room was not found.' });
-      if (room.status === 'maintenance') return res.status(400).json({ success: false, message: 'Selected room is currently under maintenance.' });
-      if (Number(updated.guests) > Number(room.capacity)) return res.status(400).json({ success: false, message: 'Room capacity is too small for the number of guests.' });
-      updated.roomType = room.type;
-    }
-
-    db.reservations[index] = updated;
-    await writeDatabase(db);
-    res.json({ success: true, message: 'Reservation updated successfully.', data: enrichReservation(updated, db.rooms) });
+    await sql.begin(async (tx) => {
+      const rooms = await tx`SELECT * FROM rooms WHERE id = ${merged.roomId} AND hotel_id = ${hotelId} FOR UPDATE`;
+      const room = rooms[0];
+      if (!room || ['maintenance', 'out_of_service'].includes(room.status) || merged.guests > room.capacity) {
+        const error = new Error('Room unavailable'); error.statusCode = 400; error.publicMessage = 'Selected room is unavailable or too small.'; throw error;
+      }
+      await tx`
+        UPDATE guests SET first_name=${merged.guestName}, last_name=${merged.lastName}, email=${merged.email}, phone=${merged.phone || null}, updated_at=NOW()
+        WHERE id=${current.guest_id} AND hotel_id=${hotelId}
+      `;
+      await tx`
+        UPDATE reservations SET code=${merged.code}, room_id=${merged.roomId}, check_in_date=${merged.checkIn}, check_out_date=${merged.checkOut},
+          guest_count=${merged.guests}, payment_status=${merged.paymentStatus}, balance=${merged.balance}, status=${merged.status},
+          smart_check_in=${merged.smartCheckIn}, updated_at=NOW()
+        WHERE id=${id.data} AND hotel_id=${hotelId}
+      `;
+      await tx`INSERT INTO audit_logs (hotel_id,user_id,action,entity_type,entity_id,ip_address) VALUES (${hotelId},${req.auth.user.id},'reservation.update','reservation',${id.data},${req.ip || null})`;
+    });
+    const row = await selectReservation(id.data, hotelId);
+    res.json({ success: true, message: 'Reservation updated successfully.', data: mapReservation(row) });
   } catch (error) {
+    if (error.code === '23505') return res.status(409).json({ success: false, message: 'Reservation code already exists.' });
+    if (error.code === '23P01') return res.status(409).json({ success: false, message: 'The room is already booked for these dates.' });
     next(error);
   }
 }
 
 async function deleteReservation(req, res, next) {
+  const id = uuid.safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ success: false, message: 'Invalid reservation id.' });
   try {
-    const db = await readDatabase();
-    const exists = db.reservations.some((item) => Number(item.id) === Number(req.params.id));
-    if (!exists) return res.status(404).json({ success: false, message: 'Reservation not found.' });
-    db.reservations = db.reservations.filter((item) => Number(item.id) !== Number(req.params.id));
-    await writeDatabase(db);
-    res.json({ success: true, message: 'Reservation deleted successfully.' });
-  } catch (error) {
-    next(error);
-  }
+    const hotelId = req.auth.user.hotelId;
+    const updated = await sql`UPDATE reservations SET status='cancelled', updated_at=NOW() WHERE id=${id.data} AND hotel_id=${hotelId} RETURNING id`;
+    if (!updated[0]) return res.status(404).json({ success: false, message: 'Reservation not found.' });
+    await sql`INSERT INTO audit_logs (hotel_id,user_id,action,entity_type,entity_id,ip_address) VALUES (${hotelId},${req.auth.user.id},'reservation.cancel','reservation',${id.data},${req.ip || null})`;
+    res.json({ success: true, message: 'Reservation cancelled successfully.' });
+  } catch (error) { next(error); }
 }
 
 async function completeCheckIn(req, res, next) {
+  const id = uuid.safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ success: false, message: 'Invalid reservation id.' });
   try {
-    const db = await readDatabase();
-    const index = db.reservations.findIndex((item) => Number(item.id) === Number(req.params.id));
-    if (index === -1) return res.status(404).json({ success: false, message: 'Reservation not found.' });
-
-    if (db.reservations[index].paymentStatus !== 'paid' || Number(db.reservations[index].balance) > 0) {
-      return res.status(400).json({ success: false, message: 'Payment must be completed before check-in.' });
-    }
-
-    db.reservations[index].status = 'checked-in';
-    db.reservations[index].smartCheckIn = true;
-    db.reservations[index].cardIssued = true;
-    const room = db.rooms.find((item) => Number(item.id) === Number(db.reservations[index].roomId));
-    if (room) room.status = 'occupied';
-    await writeDatabase(db);
-    res.json({ success: true, message: 'Check-in completed and room card issued.', data: enrichReservation(db.reservations[index], db.rooms) });
-  } catch (error) {
-    next(error);
-  }
+    const hotelId = req.auth.user.hotelId;
+    await sql.begin(async (tx) => {
+      const rows = await tx`SELECT * FROM reservations WHERE id=${id.data} AND hotel_id=${hotelId} FOR UPDATE`;
+      const reservation = rows[0];
+      if (!reservation) { const e=new Error('Not found'); e.statusCode=404; e.publicMessage='Reservation not found.'; throw e; }
+      if (reservation.status !== 'reserved') { const e=new Error('Invalid status'); e.statusCode=409; e.publicMessage='Reservation is not ready for check-in.'; throw e; }
+      if (reservation.payment_status !== 'paid' || Number(reservation.balance) > 0) { const e=new Error('Payment required'); e.statusCode=400; e.publicMessage='Payment must be completed before check-in.'; throw e; }
+      await tx`UPDATE reservations SET status='checked_in', smart_check_in=TRUE, card_issued=TRUE, updated_at=NOW() WHERE id=${id.data}`;
+      if (reservation.room_id) await tx`UPDATE rooms SET status='occupied', updated_at=NOW() WHERE id=${reservation.room_id} AND hotel_id=${hotelId}`;
+      await tx`INSERT INTO audit_logs (hotel_id,user_id,action,entity_type,entity_id,ip_address) VALUES (${hotelId},${req.auth.user.id},'reservation.check_in','reservation',${id.data},${req.ip || null})`;
+    });
+    const row = await selectReservation(id.data, hotelId);
+    res.json({ success: true, message: 'Check-in completed.', data: mapReservation(row) });
+  } catch (error) { next(error); }
 }
 
 async function completeCheckout(req, res, next) {
+  const id = uuid.safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ success: false, message: 'Invalid reservation id.' });
   try {
-    const db = await readDatabase();
-    const index = db.reservations.findIndex((item) => Number(item.id) === Number(req.params.id));
-    if (index === -1) return res.status(404).json({ success: false, message: 'Reservation not found.' });
-
-    db.reservations[index].status = 'checked-out';
-    db.reservations[index].cardIssued = false;
-    const room = db.rooms.find((item) => Number(item.id) === Number(db.reservations[index].roomId));
-    if (room) room.status = 'available';
-    await writeDatabase(db);
-    res.json({ success: true, message: 'Checkout completed and room card returned.', data: enrichReservation(db.reservations[index], db.rooms) });
-  } catch (error) {
-    next(error);
-  }
+    const hotelId = req.auth.user.hotelId;
+    await sql.begin(async (tx) => {
+      const rows = await tx`SELECT * FROM reservations WHERE id=${id.data} AND hotel_id=${hotelId} FOR UPDATE`;
+      const reservation = rows[0];
+      if (!reservation) { const e=new Error('Not found'); e.statusCode=404; e.publicMessage='Reservation not found.'; throw e; }
+      if (reservation.status !== 'checked_in') { const e=new Error('Invalid status'); e.statusCode=409; e.publicMessage='Reservation is not checked in.'; throw e; }
+      await tx`UPDATE reservations SET status='checked_out', card_issued=FALSE, updated_at=NOW() WHERE id=${id.data}`;
+      if (reservation.room_id) await tx`UPDATE rooms SET status='available', updated_at=NOW() WHERE id=${reservation.room_id} AND hotel_id=${hotelId}`;
+      await tx`INSERT INTO audit_logs (hotel_id,user_id,action,entity_type,entity_id,ip_address) VALUES (${hotelId},${req.auth.user.id},'reservation.check_out','reservation',${id.data},${req.ip || null})`;
+    });
+    const row = await selectReservation(id.data, hotelId);
+    res.json({ success: true, message: 'Checkout completed.', data: mapReservation(row) });
+  } catch (error) { next(error); }
 }
 
-
-async function processPayment(req, res, next) {
-  try {
-    const db = await readDatabase();
-    const index = db.reservations.findIndex((item) => Number(item.id) === Number(req.params.id));
-    if (index === -1) return res.status(404).json({ success: false, message: 'Reservation not found.' });
-
-    const reservation = db.reservations[index];
-    const amount = Number(req.body.amount ?? reservation.balance ?? 0);
-    if (amount < 0) return res.status(400).json({ success: false, message: 'Payment amount cannot be negative.' });
-
-    reservation.paymentStatus = 'paid';
-    reservation.balance = 0;
-
-    if (!Array.isArray(db.payments)) db.payments = [];
-    db.payments.push({
-      id: getNextId(db.payments),
-      reservationId: reservation.id,
-      amount,
-      method: req.body.method || 'Credit Card',
-      status: 'paid',
-      paidAt: new Date().toISOString()
-    });
-
-    await writeDatabase(db);
-    res.json({ success: true, message: 'Payment processed successfully.', data: enrichReservation(reservation, db.rooms) });
-  } catch (error) {
-    next(error);
-  }
+async function processPayment(req, res) {
+  res.status(501).json({ success: false, message: 'Live payments are disabled until a PCI-compliant payment provider is connected.' });
 }
 
 module.exports = { getReservations, getReservationById, verifyReservation, createReservation, updateReservation, deleteReservation, completeCheckIn, completeCheckout, processPayment };
