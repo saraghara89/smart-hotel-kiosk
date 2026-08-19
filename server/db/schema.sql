@@ -32,7 +32,7 @@ CREATE TABLE guests (
   last_name VARCHAR(80) NOT NULL,
   email VARCHAR(254),
   phone VARCHAR(32),
-  document_last4 VARCHAR(4),
+  document_last4 VARCHAR(4) CHECK (document_last4 IS NULL OR document_last4 ~ '^[0-9]{4}$'),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -109,6 +109,21 @@ CREATE TABLE audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  csrf_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ip_address INET,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at TIMESTAMPTZ,
+  CHECK (expires_at > created_at)
+);
+
+CREATE UNIQUE INDEX idx_users_hotel_email_ci ON users(hotel_id, lower(email));
 CREATE INDEX idx_users_hotel_role ON users(hotel_id, role);
 CREATE INDEX idx_guests_hotel_email ON guests(hotel_id, email);
 CREATE INDEX idx_reservations_hotel_status ON reservations(hotel_id, status);
@@ -116,3 +131,15 @@ CREATE INDEX idx_reservations_hotel_dates ON reservations(hotel_id, check_in_dat
 CREATE INDEX idx_reservations_guest ON reservations(guest_id);
 CREATE INDEX idx_payments_reservation ON payments(reservation_id);
 CREATE INDEX idx_audit_logs_hotel_created ON audit_logs(hotel_id, created_at DESC);
+CREATE INDEX idx_sessions_user_active ON sessions(user_id, expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX idx_sessions_expiry ON sessions(expires_at);
+
+ALTER TABLE hotels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kiosk_devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
