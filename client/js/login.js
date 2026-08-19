@@ -13,8 +13,9 @@ loginForm.addEventListener('submit', async (event) => {
         password: document.getElementById('password').value
       })
     });
-    localStorage.setItem('currentUser', JSON.stringify(result.data));
-    window.location.href = 'admin.html';
+    sessionStorage.setItem('csrfToken', result.csrfToken);
+    sessionStorage.setItem('currentUser', JSON.stringify(result.data));
+    window.location.replace('admin.html');
   } catch (error) {
     showMessage(message, error.message, 'error');
   } finally {
