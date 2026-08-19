@@ -10,30 +10,30 @@ let chart;
 let reservationsCache = [];
 let roomsCache = [];
 
-function requireStaffLogin() {
-  const raw = localStorage.getItem('currentUser');
-  if (!raw) {
-    window.location.href = 'login.html';
+async function requireStaffLogin() {
+  try {
+    const result = await request('/auth/me');
+    if (!['owner', 'admin', 'staff'].includes(result.data.role)) throw new Error('Unauthorized');
+    sessionStorage.setItem('currentUser', JSON.stringify(result.data));
+    return result.data;
+  } catch (_) {
+    sessionStorage.removeItem('csrfToken');
+    sessionStorage.removeItem('currentUser');
+    window.location.replace('login.html');
     return null;
   }
-  const user = JSON.parse(raw);
-  if (!['admin', 'staff'].includes(user.role)) {
-    window.location.href = 'login.html';
-    return null;
-  }
-  return user;
 }
 
 function getFormPayload() {
-  const room = roomsCache.find((item) => Number(item.id) === Number(roomSelect.value));
+  const room = roomsCache.find((item) => String(item.id) === String(roomSelect.value));
   return {
     code: document.getElementById('code').value.trim().toUpperCase(),
     guestName: document.getElementById('guestName').value.trim(),
-    lastName: document.getElementById('lastName').value.trim().toUpperCase(),
+    lastName: document.getElementById('lastName').value.trim(),
     email: document.getElementById('email').value.trim().toLowerCase(),
     checkIn: document.getElementById('checkIn').value,
     checkOut: document.getElementById('checkOut').value,
-    roomId: Number(roomSelect.value),
+    roomId: roomSelect.value,
     guests: Number(document.getElementById('guests').value),
     paymentStatus: document.getElementById('paymentStatus').value,
     balance: document.getElementById('paymentStatus').value === 'paid' ? 0 : Number(room?.pricePerNight || 0),
@@ -48,6 +48,7 @@ function validatePayload(payload) {
   if (missing.length) return `Missing fields: ${missing.join(', ')}`;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return 'Please enter a valid email address.';
   if (new Date(payload.checkOut) <= new Date(payload.checkIn)) return 'Check-out date must be after check-in date.';
+  if (!Number.isInteger(payload.guests) || payload.guests < 1 || payload.guests > 20) return 'Invalid guest count.';
   return '';
 }
 
@@ -74,48 +75,109 @@ function fillForm(item) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function appendTextCell(row, value) {
+  const cell = document.createElement('td');
+  cell.textContent = value == null ? '' : String(value);
+  row.appendChild(cell);
+}
+
+function actionButton(label, action, id, danger = false) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = danger ? 'small-btn danger-btn' : 'small-btn';
+  button.dataset.action = action;
+  button.dataset.id = String(id);
+  button.textContent = label;
+  return button;
+}
+
 async function loadRooms() {
   const result = await request('/rooms');
   roomsCache = result.data;
-  roomSelect.innerHTML = roomsCache.map((room) => `<option value="${room.id}">${room.number} - ${room.type} (${room.status})</option>`).join('');
+  roomSelect.replaceChildren();
+  for (const room of roomsCache) {
+    const option = document.createElement('option');
+    option.value = room.id;
+    option.textContent = `${room.number} - ${room.type} (${room.status})`;
+    roomSelect.appendChild(option);
+  }
 }
 
 async function loadStats() {
   const result = await request('/stats');
   const stats = result.data;
-  document.getElementById('statsCards').innerHTML = `
-    <div class="dash-card"><span>Total Reservations</span><strong>${stats.totalReservations}</strong></div>
-    <div class="dash-card"><span>Checked In</span><strong>${stats.checkedIn}</strong></div>
-    <div class="dash-card"><span>Available Rooms</span><strong>${stats.availableRooms}</strong></div>
-    <div class="dash-card"><span>Estimated Revenue</span><strong>$${stats.estimatedRevenue}</strong></div>`;
-  const labels = Object.keys(stats.byStatus);
-  const values = Object.values(stats.byStatus);
+  const cards = document.getElementById('statsCards');
+  cards.replaceChildren();
+  const values = [
+    ['Total Reservations', stats.totalReservations],
+    ['Checked In', stats.checkedIn],
+    ['Available Rooms', stats.availableRooms],
+    ['Estimated Revenue', `$${Number(stats.estimatedRevenue || 0).toFixed(2)}`]
+  ];
+  for (const [label, value] of values) {
+    const card = document.createElement('div');
+    card.className = 'dash-card';
+    const span = document.createElement('span');
+    const strong = document.createElement('strong');
+    span.textContent = label;
+    strong.textContent = String(value);
+    card.append(span, strong);
+    cards.appendChild(card);
+  }
+
+  const labels = Object.keys(stats.byStatus || {});
+  const chartValues = Object.values(stats.byStatus || {}).map(Number);
   if (chart) chart.destroy();
-  chart = new Chart(document.getElementById('statusChart'), { type: 'bar', data: { labels, datasets: [{ label: 'Reservations', data: values }] } });
+  chart = new Chart(document.getElementById('statusChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Reservations', data: chartValues }] }
+  });
 }
 
 async function loadReservations() {
   try {
-    rows.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+    rows.replaceChildren();
+    const loadingRow = document.createElement('tr');
+    const loadingCell = document.createElement('td');
+    loadingCell.colSpan = 6;
+    loadingCell.textContent = 'Loading...';
+    loadingRow.appendChild(loadingCell);
+    rows.appendChild(loadingRow);
+
     const params = new URLSearchParams();
     if (statusFilter.value) params.set('status', statusFilter.value);
-    if (searchInput.value.trim()) params.set('q', searchInput.value.trim());
-    const query = params.toString() ? `?${params.toString()}` : '';
-    const result = await request(`/reservations${query}`);
+    if (searchInput.value.trim()) params.set('q', searchInput.value.trim().slice(0, 100));
+    const result = await request(`/reservations${params.size ? `?${params}` : ''}`);
     reservationsCache = result.data;
+    rows.replaceChildren();
+
     if (!result.data.length) {
-      rows.innerHTML = '<tr><td colspan="6">No reservations to display.</td></tr>';
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 6;
+      cell.textContent = 'No reservations to display.';
+      row.appendChild(cell);
+      rows.appendChild(row);
       return;
     }
-    rows.innerHTML = result.data.map((item) => `
-      <tr>
-        <td>${item.code}</td>
-        <td>${item.guestName}</td>
-        <td>${item.room?.number || '-'} / ${item.roomType}</td>
-        <td>${item.paymentStatus}</td>
-        <td>${item.status}</td>
-        <td class="row-actions"><button class="small-btn" data-action="checkin" data-id="${item.id}">Check In</button><button class="small-btn" data-action="edit" data-id="${item.id}">Edit</button><button class="small-btn danger-btn" data-action="delete" data-id="${item.id}">Delete</button></td>
-      </tr>`).join('');
+
+    for (const item of result.data) {
+      const row = document.createElement('tr');
+      appendTextCell(row, item.code);
+      appendTextCell(row, item.guestName);
+      appendTextCell(row, `${item.room?.number || '-'} / ${item.roomType || '-'}`);
+      appendTextCell(row, item.paymentStatus);
+      appendTextCell(row, item.status);
+      const actions = document.createElement('td');
+      actions.className = 'row-actions';
+      actions.append(
+        actionButton('Check In', 'checkin', item.id),
+        actionButton('Edit', 'edit', item.id),
+        actionButton('Delete', 'delete', item.id, true)
+      );
+      row.appendChild(actions);
+      rows.appendChild(row);
+    }
   } catch (error) {
     showMessage(message, error.message, 'error');
   }
@@ -130,14 +192,13 @@ form.addEventListener('submit', async (event) => {
 
   try {
     setLoading(saveReservationBtn, true, id ? 'Updating...' : 'Creating...');
-    const result = await request(id ? `/reservations/${id}` : '/reservations', {
+    const result = await request(id ? `/reservations/${encodeURIComponent(id)}` : '/reservations', {
       method: id ? 'PUT' : 'POST',
       body: JSON.stringify(payload)
     });
     showMessage(message, result.message, 'success');
     clearForm();
-    await loadReservations();
-    await loadStats();
+    await Promise.all([loadReservations(), loadStats()]);
   } catch (error) {
     showMessage(message, error.message, 'error');
   } finally {
@@ -151,22 +212,20 @@ rows.addEventListener('click', async (event) => {
   if (!id || !action) return;
 
   if (action === 'edit') {
-    const item = reservationsCache.find((reservation) => Number(reservation.id) === Number(id));
+    const item = reservationsCache.find((reservation) => String(reservation.id) === String(id));
     if (item) fillForm(item);
     return;
   }
 
   try {
     if (action === 'checkin') {
-      await request(`/reservations/${id}/check-in`, { method: 'PATCH' });
+      await request(`/reservations/${encodeURIComponent(id)}/check-in`, { method: 'PATCH' });
       showMessage(message, 'Reservation checked in successfully.', 'success');
-    }
-    if (action === 'delete') {
-      await request(`/reservations/${id}`, { method: 'DELETE' });
+    } else if (action === 'delete') {
+      await request(`/reservations/${encodeURIComponent(id)}`, { method: 'DELETE' });
       showMessage(message, 'Reservation deleted successfully.', 'success');
     }
-    await loadReservations();
-    await loadStats();
+    await Promise.all([loadReservations(), loadStats()]);
   } catch (error) {
     showMessage(message, error.message, 'error');
   }
@@ -178,11 +237,13 @@ searchInput.addEventListener('input', () => {
   searchInput.searchTimer = window.setTimeout(loadReservations, 350);
 });
 resetFormBtn.addEventListener('click', clearForm);
-document.getElementById('logoutBtn').addEventListener('click', () => {
-  localStorage.removeItem('currentUser');
-  window.location.href = 'login.html';
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  try { await request('/auth/logout', { method: 'POST' }); } catch (_) {}
+  sessionStorage.clear();
+  window.location.replace('login.html');
 });
 
-if (requireStaffLogin()) {
+requireStaffLogin().then((user) => {
+  if (!user) return;
   loadRooms().then(() => Promise.all([loadStats(), loadReservations()])).catch((error) => showMessage(message, error.message, 'error'));
-}
+});
