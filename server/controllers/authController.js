@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const argon2 = require('argon2');
 const { z } = require('zod');
-const { sql } = require('../db/postgresDatabase');
+const { sql } = require('../db/postgres');
 const { hashToken, SESSION_COOKIE } = require('../middleware/auth');
 
 const loginSchema = z.object({
