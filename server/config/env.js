@@ -8,10 +8,9 @@ const schema = z.object({
   APP_ORIGIN: z.string().url(),
   DATABASE_URL: z.string().min(20),
   DATABASE_SSL: z.enum(['true', 'false']).default('true'),
-  SESSION_SECRET: z.string().min(32),
-  TOKEN_ISSUER: z.string().min(3).default('smart-stay-api'),
-  TOKEN_AUDIENCE: z.string().min(3).default('smart-stay-admin'),
-  ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().min(5).max(60).default(15)
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(30).default(10),
+  HOTEL_SLUG: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24).default(8)
 });
 
 const parsed = schema.safeParse(process.env);
