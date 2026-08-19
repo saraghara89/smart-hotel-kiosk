@@ -1,13 +1,28 @@
 const API_BASE = '/api';
 
 async function request(path, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = { ...(options.headers || {}) };
+  if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrfToken = sessionStorage.getItem('csrfToken');
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options
+    credentials: 'same-origin',
+    ...options,
+    method,
+    headers
   });
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success === false) {
+    if (response.status === 401) {
+      sessionStorage.removeItem('csrfToken');
+      sessionStorage.removeItem('currentUser');
+    }
     throw new Error(data.message || 'Request failed.');
   }
   return data;
@@ -32,10 +47,10 @@ function setLoading(button, isLoading, loadingText = 'Loading...') {
 }
 
 function getSelectedReservation() {
-  const raw = localStorage.getItem('selectedReservation');
+  const raw = sessionStorage.getItem('selectedReservation');
   return raw ? JSON.parse(raw) : null;
 }
 
 function saveSelectedReservation(reservation) {
-  localStorage.setItem('selectedReservation', JSON.stringify(reservation));
+  sessionStorage.setItem('selectedReservation', JSON.stringify(reservation));
 }
