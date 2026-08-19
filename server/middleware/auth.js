@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sql } = require('../db/postgresDatabase');
+const { sql } = require('../db/postgres');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const SESSION_COOKIE = isProduction ? '__Host-smartstay_session' : 'smartstay_session';
@@ -65,7 +65,9 @@ function requireCsrf(req, res, next) {
   if (!req.auth) return res.status(401).json({ success: false, message: 'Authentication required.' });
 
   const token = req.get('X-CSRF-Token');
-  if (!token) return res.status(403).json({ success: false, message: 'Invalid request token.' });
+  if (!token || typeof req.auth.csrfHash !== 'string') {
+    return res.status(403).json({ success: false, message: 'Invalid request token.' });
+  }
 
   const supplied = Buffer.from(hashToken(token), 'hex');
   const expected = Buffer.from(req.auth.csrfHash, 'hex');
